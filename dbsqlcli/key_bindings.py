@@ -97,4 +97,20 @@ def cli_bindings(cli):
         _logger.debug("Detected <PageDown> key.")
         event.app.current_buffer.history_forward(count=event.arg)
 
+    @kb.add("escape", "k")
+    def _(event):
+        """
+        Alt-K: vim-style jump to the previous history entry (same as PageUp).
+        """
+        _logger.debug("Detected <Alt-K> key.")
+        event.app.current_buffer.history_backward(count=event.arg)
+
+    @kb.add("escape", "j")
+    def _(event):
+        """
+        Alt-J: vim-style jump to the next history entry (same as PageDown).
+        """
+        _logger.debug("Detected <Alt-J> key.")
+        event.app.current_buffer.history_forward(count=event.arg)
+
     return kb
