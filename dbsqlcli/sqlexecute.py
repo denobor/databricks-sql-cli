@@ -1,6 +1,7 @@
 # encoding: utf-8
 from typing import Optional
 import logging
+import os
 import sqlparse, click
 from databricks import sql as dbsql
 
@@ -58,6 +59,11 @@ class SQLExecute(object):
                 "oauth_client_id": DBSQL_CLI_OAUTH_CLIENT_ID,
                 "oauth_redirect_port": DBSQL_CLI_OAUTH_PORT,
             }
+
+        # Initial Unity Catalog catalog for the session; unset = server default.
+        catalog = os.environ.get("DBSQLCLI_CATALOG")
+        if catalog:
+            oauth_params["catalog"] = catalog
 
         conn = dbsql.connect(
             server_hostname=self.hostname,
