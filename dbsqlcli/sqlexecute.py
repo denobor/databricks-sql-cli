@@ -202,6 +202,10 @@ class SQLExecute(object):
                 yield row[0], row[1]
 
     def databases(self):
+        # Scope to the session catalog when set: an unscoped schemas() walks every
+        # catalog in the metastore, and one broken federated catalog (dead JDBC
+        # connection etc.) fails the whole listing.
+        catalog = os.environ.get("DBSQLCLI_CATALOG")
         with self.conn.cursor() as cur:
-            _databases = cur.schemas().fetchall()
+            _databases = cur.schemas(catalog_name=catalog).fetchall()
             return [x[0] for x in _databases]

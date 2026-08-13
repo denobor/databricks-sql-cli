@@ -69,7 +69,13 @@ class CompletionRefresher(object):
 
         while 1:
             for refresher in self.refreshers.values():
-                refresher(completer, executor)
+                # A failed metadata fetch (permissions, broken federated catalog,
+                # transient network) must not kill the refresh thread and splat a
+                # traceback over the prompt; completions just stay partial.
+                try:
+                    refresher(completer, executor)
+                except Exception as e:
+                    LOGGER.warning("completion refresh failed: %s", e)
                 if self._restart_refresh.is_set():
                     self._restart_refresh.clear()
                     break
