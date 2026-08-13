@@ -448,6 +448,9 @@ def write_once(output):
     if output and once_file:
         try:
             f = open(**once_file)
+            # This is called once per output line; only the first open may
+            # truncate (-o), every later line must append.
+            once_file["mode"] = "a"
         except (IOError, OSError) as e:
             once_file = None
             raise OSError(
