@@ -24,6 +24,9 @@ log_level = INFO
 # Timing of sql statments and table rendering.
 timing = True
 
+# Show the "N rows in set" status line after query results.
+show_status = True
+
 # Table format. Possible values: ascii, double, github,
 # psql, plain, simple, grid, fancy_grid, pipe, orgtbl, rst, mediawiki, html,
 # latex, latex_booktabs, textile, moinmoin, jira, vertical, tsv, csv.

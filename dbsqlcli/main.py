@@ -111,6 +111,13 @@ For more details about the error, you can check the log file: %s""" % (
             sys.exit(1)
 
         special.set_timing_enabled(_cfg["main"].as_bool("timing"))
+        # Show the "N rows in set" status line after results (older user configs
+        # may not have the key, so default True).
+        self.show_status = (
+            _cfg["main"].as_bool("show_status")
+            if "show_status" in _cfg["main"]
+            else True
+        )
         self.multi_line = _cfg["main"].as_bool("multi_line")
         self.key_bindings = _cfg["main"]["key_bindings"]
         self.prompt = _cfg["main"]["prompt"] or self.DEFAULT_PROMPT
@@ -329,7 +336,9 @@ For more details about the error, you can check the log file: %s""" % (
                         if result_count > 0:
                             self.echo("")
                         try:
-                            self.output(formatted, status)
+                            self.output(
+                                formatted, status if self.show_status else None
+                            )
                         except KeyboardInterrupt:
                             pass
 
