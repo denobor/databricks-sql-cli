@@ -426,9 +426,12 @@ def write_tee(output):
     aliases=("\\o",),
 )
 def set_once(arg, **_):
-    global once_file
+    global once_file, written_to_once_file
 
     once_file = parseargfile(arg)
+    # Reset the written flag, or unset_once_if_written() cancels this new
+    # target as soon as the \once command's own (empty) result is processed.
+    written_to_once_file = None
 
     return [(None, None, None, "")]
 
