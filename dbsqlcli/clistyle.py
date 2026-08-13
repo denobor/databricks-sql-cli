@@ -84,25 +84,47 @@ def style_factory(name, cli_style):
     )
 
 
+# Style words prompt_toolkit understands but Pygments does not; strip them
+# before a [colors] value is reused for Pygments table-output styling.
+PTK_ONLY_STYLE_WORDS = {
+    "noinherit",
+    "reverse",
+    "noreverse",
+    "blink",
+    "noblink",
+    "hidden",
+    "nohidden",
+}
+
+
+def _strip_ptk_only_words(style_str):
+    return " ".join(
+        w for w in style_str.split() if w.lower() not in PTK_ONLY_STYLE_WORDS
+    )
+
+
 def style_factory_output(name, cli_style):
     try:
-        style = pygments.styles.get_style_by_name(name).styles
+        style = pygments.styles.get_style_by_name(name).styles.copy()
     except ClassNotFound:
-        style = pygments.styles.get_style_by_name("native").styles
+        style = pygments.styles.get_style_by_name("native").styles.copy()
 
     for token in cli_style:
         if token.startswith("Token."):
             token_type, style_value = parse_pygments_style(token, style, cli_style)
-            style.update({token_type: style_value})
+            style.update({token_type: _strip_ptk_only_words(style_value)})
         elif token in PROMPT_STYLE_TO_TOKEN:
             token_type = PROMPT_STYLE_TO_TOKEN[token]
-            style.update({token_type: cli_style[token]})
+            style.update({token_type: _strip_ptk_only_words(cli_style[token])})
         else:
-            # TODO: cli helpers will have to switch to ptk.Style
-            logger.error("Unhandled style / class name: %s", token)
+            # ptk-2.0-style class names (e.g. pygments.* overrides) have no
+            # Pygments output token; they only affect the prompt style.
+            logger.debug("No output token for style class: %s", token)
 
-        class OutputStyle(PygmentsStyle):
-            default_style = ""
-            styles = style
+    # NOTE: upstream defined this class and returned INSIDE the loop, so only
+    # the first [colors] key ever reached the output style.
+    class OutputStyle(PygmentsStyle):
+        default_style = ""
+        styles = style
 
-        return OutputStyle
+    return OutputStyle

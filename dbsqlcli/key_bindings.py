@@ -80,4 +80,21 @@ def cli_bindings(cli):
         b = event.app.current_buffer
         b.complete_state = None
 
+    @kb.add("pageup")
+    def _(event):
+        """
+        Jump straight to the previous history entry, regardless of cursor
+        position (arrow-up first walks each line of a multi-line buffer).
+        """
+        _logger.debug("Detected <PageUp> key.")
+        event.app.current_buffer.history_backward(count=event.arg)
+
+    @kb.add("pagedown")
+    def _(event):
+        """
+        Jump straight to the next history entry.
+        """
+        _logger.debug("Detected <PageDown> key.")
+        event.app.current_buffer.history_forward(count=event.arg)
+
     return kb
