@@ -331,6 +331,30 @@ For more details about the error, you can check the log file: %s""" % (
                         title, rows, headers, special.is_expanded_output(), None
                     )
 
+                    # \once/\o file copy. A .csv/.tsv target gets delimited
+                    # data; anything else gets the display format. (rows is a
+                    # list, so formatting a second time for the file is safe.)
+                    once_name = special.get_once_filename()
+                    if once_name:
+                        lower = once_name.lower()
+                        if rows and lower.endswith((".csv", ".tsv")):
+                            file_lines = self.formatter.format_output(
+                                rows,
+                                headers,
+                                format_name=lower[-3:],
+                                disable_numparse=True,
+                            )
+                        else:
+                            file_lines = self.format_output(
+                                title,
+                                rows,
+                                headers,
+                                special.is_expanded_output(),
+                                None,
+                            )
+                        for line in file_lines:
+                            special.write_once(line)
+
                     t = time() - start
                     try:
                         if result_count > 0:
@@ -411,7 +435,6 @@ For more details about the error, you can check the log file: %s""" % (
             output_via_pager = self.explicit_pager and special.is_pager_enabled()
             for i, line in enumerate(output, 1):
                 special.write_tee(line)
-                special.write_once(line)
 
                 if fits or output_via_pager:
                     # buffering

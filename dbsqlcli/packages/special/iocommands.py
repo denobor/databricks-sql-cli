@@ -421,7 +421,8 @@ def write_tee(output):
 @special_command(
     "\\once",
     "\\o [-o] filename",
-    "Append next result to an output file (overwrite using -o).",
+    "Append next result to an output file (overwrite using -o); "
+    ".csv/.tsv filenames get delimited data instead of the display format.",
     aliases=("\\o",),
 )
 def set_once(arg, **_):
@@ -430,6 +431,12 @@ def set_once(arg, **_):
     once_file = parseargfile(arg)
 
     return [(None, None, None, "")]
+
+
+@export
+def get_once_filename():
+    """Filename of the pending \\once target, or None."""
+    return once_file["file"] if once_file else None
 
 
 @export
