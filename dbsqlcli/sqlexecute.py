@@ -71,6 +71,9 @@ class SQLExecute(object):
             access_token=self.access_token,
             schema=database,
             user_agent_entry=USER_AGENT_STRING,
+            # No phoning home; its background thread also logs ERRORs over the
+            # prompt when the network is away (e.g. laptop wake before DNS).
+            enable_telemetry=False,
             **oauth_params,
         )
 
