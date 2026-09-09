@@ -425,6 +425,10 @@ For more details about the error, you can check the log file: %s""" % (
                 self.iterations += 1
         except EOFError:
             special.close_tee()
+        finally:
+            # Close before interpreter teardown, or the connector's destructor
+            # logs "Attempt to close session raised a local exception".
+            self.sqlexecute.close_connection()
 
     def get_output_margin(self, status=None):
         """Get the output margin (number of rows for the prompt, footer and
