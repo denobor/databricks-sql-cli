@@ -118,6 +118,25 @@ def refresh_schemata(completer, executor):
 
 @refresher("tables")
 def refresh_tables(completer, executor):
+    # Prefer catalog-wide metadata (two information_schema queries) so dotted
+    # schema.table references complete across the whole session catalog.
+    rels = None
+    try:
+        rels = executor.catalog_relations()
+    except Exception as e:
+        LOGGER.warning("catalog-wide table refresh failed: %s", e)
+    if rels:
+        completer.extend_qualified_relations(rels, kind="tables")
+        try:
+            cols = executor.catalog_columns()
+        except Exception as e:
+            LOGGER.warning("catalog-wide column refresh failed: %s", e)
+            cols = None
+        if cols:
+            completer.extend_qualified_columns(cols, kind="tables")
+        return
+
+    # Legacy fallback: current schema only.
     # extend_relations adds to the list of table names
     # extend_columns adds to the list of columns
 

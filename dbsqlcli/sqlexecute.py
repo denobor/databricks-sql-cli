@@ -204,6 +204,39 @@ class SQLExecute(object):
             if row[0] in tables:
                 yield row[0], row[1]
 
+    def catalog_relations(self):
+        """(schema, table) pairs for every schema in the session catalog.
+
+        One information_schema query instead of a SHOW TABLES crawl, so dotted
+        schema.table completion can cover the whole catalog. Returns None when
+        no session catalog is set (caller falls back to legacy behavior).
+        """
+        catalog = os.environ.get("DBSQLCLI_CATALOG")
+        if not catalog:
+            return None
+        query = (
+            "select table_schema, table_name "
+            "from `{}`.information_schema.tables "
+            "order by table_schema, table_name".format(catalog)
+        )
+        with self.conn.cursor() as cur:
+            cur.execute(query)
+            return cur.fetchall()
+
+    def catalog_columns(self):
+        """(schema, table, column) rows for the whole session catalog."""
+        catalog = os.environ.get("DBSQLCLI_CATALOG")
+        if not catalog:
+            return None
+        query = (
+            "select table_schema, table_name, column_name "
+            "from `{}`.information_schema.columns "
+            "order by table_schema, table_name, ordinal_position".format(catalog)
+        )
+        with self.conn.cursor() as cur:
+            cur.execute(query)
+            return cur.fetchall()
+
     def databases(self):
         # Scope to the session catalog when set: an unscoped schemas() walks every
         # catalog in the metastore, and one broken federated catalog (dead JDBC

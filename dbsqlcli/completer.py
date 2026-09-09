@@ -1,4 +1,5 @@
 import logging
+import os
 from re import compile, escape
 from collections import Counter
 from itertools import chain
@@ -130,6 +131,33 @@ class DBSQLCompleter(Completer):
                     self.dbname,
                 )
             self.all_completions.add(relname[0])
+
+    def extend_qualified_relations(self, data, kind):
+        """Extend metadata with (schema, rel_name) rows spanning the whole
+        session catalog (from information_schema)."""
+        metadata = self.dbmetadata[kind]
+        for row in data:
+            try:
+                schema, relname = self.escaped_names(row)
+            except Exception:
+                continue
+            metadata.setdefault(schema, {})[relname] = ["*"]
+            self.all_completions.add(schema)
+            self.all_completions.add(relname)
+
+    def extend_qualified_columns(self, data, kind):
+        """Extend metadata with (schema, rel_name, column) rows."""
+        metadata = self.dbmetadata[kind]
+        for row in data:
+            try:
+                schema, relname, column = self.escaped_names(row)
+            except Exception:
+                continue
+            try:
+                metadata[schema][relname].append(column)
+            except KeyError:
+                continue
+            self.all_completions.add(column)
 
     def extend_columns(self, column_data, kind):
         """Extend column metadata
@@ -295,11 +323,19 @@ class DBSQLCompleter(Completer):
         return user_funcs
 
     def get_table_matches(self, suggestion, word_before_cursor):
-        tables = self.populate_schema_objects(suggestion.schema, "tables")
+        schema = self._relation_schema(suggestion.schema, word_before_cursor)
+        if schema == "":
+            # "<catalog>." typed: the next path element is a schema.
+            return self.get_schema_matches(suggestion, word_before_cursor)
+        tables = self.populate_schema_objects(schema, "tables")
         return self.find_matches(word_before_cursor, tables)
 
     def get_view_matches(self, suggestion, word_before_cursor):
-        views = self.populate_schema_objects(suggestion.schema, "views")
+        schema = self._relation_schema(suggestion.schema, word_before_cursor)
+        if schema == "":
+            # get_table_matches already contributed the schema suggestions.
+            return []
+        views = self.populate_schema_objects(schema, "views")
         return self.find_matches(word_before_cursor, views)
 
     def get_alias_matches(self, suggestion, word_before_cursor):
@@ -310,8 +346,29 @@ class DBSQLCompleter(Completer):
         return self.find_matches(word_before_cursor, self.databases)
 
     def get_schema_matches(self, _, word_before_cursor):
-        # TODO
-        return set()
+        # Schema names = the keys of the catalog-wide table metadata.
+        schemas = [s for s in self.dbmetadata["tables"] if s]
+        return self.find_matches(word_before_cursor, schemas)
+
+    def _relation_schema(self, suggestion_schema, word_before_cursor):
+        """Resolve the schema of a dotted reference, treating a leading
+        '<session catalog>.' as transparent (Unity Catalog three-level names).
+
+        Returns the schema name, None (no qualifier -> current schema), or ""
+        as a sentinel meaning "the qualifier is the catalog itself, suggest
+        schemas".
+        """
+        if not suggestion_schema:
+            return None
+        catalog = os.environ.get("DBSQLCLI_CATALOG", "")
+        if not catalog or self.unescape_name(suggestion_schema) != catalog:
+            return suggestion_schema
+        # The parser reports the first dotted part; look at what was actually
+        # typed to find the real schema, e.g. "cat.sch.<tab>" -> "sch".
+        parts = word_before_cursor.split(".")
+        if len(parts) >= 3:
+            return parts[-2]
+        return ""
 
     def get_keyword_matches(self, suggestion, word_before_cursor):
         # Keyword suggestions get in the way of typing for users who know SQL;
