@@ -40,10 +40,12 @@ class DBSQLCompleter(Completer):
         supported_formats=(),
         keyword_casing="auto",
         suggest_keywords=True,
+        suggest_functions=True,
     ):
         super(self.__class__, self).__init__()
         self.smart_completion = smart_completion
         self.suggest_keywords = suggest_keywords
+        self.suggest_functions = suggest_functions
         self.reserved_words = set()
         for x in self.keywords:
             self.reserved_words.update(x.split())
@@ -231,6 +233,8 @@ class DBSQLCompleter(Completer):
             collection = self.all_completions
             if not self.suggest_keywords:
                 collection = collection - set(self.keywords)
+            if not self.suggest_functions:
+                collection = collection - set(self.functions)
             return self.find_matches(
                 word_before_cursor, collection, start_only=True, fuzzy=False
             )
@@ -265,6 +269,11 @@ class DBSQLCompleter(Completer):
         return self.find_matches(word_before_cursor, scoped_cols)
 
     def get_function_matches(self, suggestion, word_before_cursor):
+        # The function channel floods an empty prefix with ~400 builtins
+        # (CASE, ABS, ...); suggest_functions = False silences it like
+        # suggest_keywords does for keywords.
+        if not self.suggest_functions:
+            return []
         # suggest user-defined functions using substring matching
         funcs = self.populate_schema_objects(suggestion.schema, "functions")
         user_funcs = self.find_matches(word_before_cursor, funcs)

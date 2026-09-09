@@ -126,6 +126,11 @@ For more details about the error, you can check the log file: %s""" % (
             if "suggest_keywords" in _cfg["main"]
             else True
         )
+        self.suggest_functions = (
+            _cfg["main"].as_bool("suggest_functions")
+            if "suggest_functions" in _cfg["main"]
+            else True
+        )
         self.key_bindings = _cfg["main"]["key_bindings"]
         self.prompt = _cfg["main"]["prompt"] or self.DEFAULT_PROMPT
         self.destructive_warning = _cfg["main"].as_bool("destructive_warning")
@@ -139,7 +144,10 @@ For more details about the error, you can check the log file: %s""" % (
         self.cli_style = _cfg["colors"]
         self.output_style = style_factory_output(self.syntax_style, self.cli_style)
 
-        self.completer = DBSQLCompleter(suggest_keywords=self.suggest_keywords)
+        self.completer = DBSQLCompleter(
+            suggest_keywords=self.suggest_keywords,
+            suggest_functions=self.suggest_functions,
+        )
         self._completer_lock = threading.Lock()
         self.completion_refresher = CompletionRefresher()
 
@@ -551,6 +559,7 @@ For more details about the error, you can check the log file: %s""" % (
             "supported_formats": self.formatter.supported_formats,
             "keyword_casing": self.completer.keyword_casing,
             "suggest_keywords": self.suggest_keywords,
+            "suggest_functions": self.suggest_functions,
         }
         self.completion_refresher.refresh(
             self.sqlexecute, self._on_completions_refreshed, completer_options
