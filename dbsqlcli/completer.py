@@ -53,6 +53,8 @@ class DBSQLCompleter(Completer):
         self.suggest_unqualified_tables = suggest_unqualified_tables
         self.catalogs = []
         self.catalog_schemas = {}
+        # {(catalog, schema): [table, ...]} spanning the whole metastore.
+        self.namespace_tables = {}
         self.reserved_words = set()
         for x in self.keywords:
             self.reserved_words.update(x.split())
@@ -145,6 +147,27 @@ class DBSQLCompleter(Completer):
     def set_catalog_schemas(self, mapping):
         """{catalog: [schema, ...]} for catalogs other than the session one."""
         self.catalog_schemas = dict(mapping)
+        for schemas in self.catalog_schemas.values():
+            self.all_completions.update(schemas)
+
+    def set_namespaces(self, rows):
+        """Load (catalog, schema, table) rows spanning the whole metastore."""
+        cat_schemas = {}
+        ns_tables = {}
+        for row in rows:
+            try:
+                cat, schema, table = row[0], row[1], row[2]
+            except Exception:
+                continue
+            cat_schemas.setdefault(cat, set()).add(schema)
+            ns_tables.setdefault((cat, schema), []).append(table)
+        self.catalog_schemas = {c: sorted(s) for c, s in cat_schemas.items()}
+        self.namespace_tables = ns_tables
+        for cat in cat_schemas:
+            if cat not in self.catalogs:
+                self.catalogs.append(cat)
+        # Schemas join the flat pool (non-smart mode); the ~10^5 table names
+        # deliberately do not, to keep it lean.
         for schemas in self.catalog_schemas.values():
             self.all_completions.update(schemas)
 
@@ -340,23 +363,30 @@ class DBSQLCompleter(Completer):
 
     def get_table_matches(self, suggestion, word_before_cursor):
         kind, val = self._relation_ref(suggestion.schema, word_before_cursor)
+        session_catalog = os.environ.get("DBSQLCLI_CATALOG", "")
         if kind == "catalog":
-            session_catalog = os.environ.get("DBSQLCLI_CATALOG", "")
-            if val == session_catalog:
+            schemas = self.catalog_schemas.get(val)
+            if not schemas and val == session_catalog:
+                # Fallback when the metastore-wide load is unavailable.
                 schemas = [s for s in self.dbmetadata["tables"] if s]
-            else:
-                schemas = self.catalog_schemas.get(val, [])
-            return self.find_matches(word_before_cursor, schemas)
+            return self.find_matches(word_before_cursor, schemas or [])
         if kind == "cat_schema":
             cat, schema = val
-            if cat != os.environ.get("DBSQLCLI_CATALOG", ""):
-                # Table metadata is loaded for the session catalog only.
-                return []
-            tables = self.populate_schema_objects(schema, "tables")
-            return self.find_matches(word_before_cursor, tables)
-        if kind == "current" and not self.suggest_unqualified_tables:
+            schema = self.unescape_name(schema)
+            tables = self.namespace_tables.get((cat, schema))
+            if not tables and cat == session_catalog:
+                tables = self.populate_schema_objects(schema, "tables")
+            return self.find_matches(word_before_cursor, tables or [])
+        if kind == "schema":
+            schema = self.unescape_name(val)
+            tables = self.namespace_tables.get((session_catalog, schema))
+            if not tables:
+                tables = self.populate_schema_objects(val, "tables")
+            return self.find_matches(word_before_cursor, tables or [])
+        # kind == "current"
+        if not self.suggest_unqualified_tables:
             return []
-        tables = self.populate_schema_objects(val, "tables")
+        tables = self.populate_schema_objects(None, "tables")
         return self.find_matches(word_before_cursor, tables)
 
     def get_view_matches(self, suggestion, word_before_cursor):
@@ -377,9 +407,9 @@ class DBSQLCompleter(Completer):
         return self.find_matches(word_before_cursor, self.databases)
 
     def get_schema_matches(self, _, word_before_cursor):
-        # Namespace suggestions: session-catalog schemas + catalog names.
-        schemas = [s for s in self.dbmetadata["tables"] if s]
-        return self.find_matches(word_before_cursor, schemas + self.catalogs)
+        # Bare level of a fully qualified reference: catalog names. The
+        # session's "active" catalog/schema is deliberately not favored.
+        return self.find_matches(word_before_cursor, self.catalogs)
 
     def _relation_ref(self, suggestion_schema, word_before_cursor):
         """Resolve a (possibly dotted) relation reference into one of:

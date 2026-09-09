@@ -160,11 +160,22 @@ MAX_CATALOG_SCHEMA_CRAWL = 30
 
 @refresher("catalogs")
 def refresh_catalogs(completer, executor):
-    # Catalog names for the top level of fully qualified references, plus
-    # schema lists for the other catalogs (table metadata stays scoped to the
-    # session catalog).
+    # Catalog names for the top level of fully qualified references.
     cats = executor.catalogs()
     completer.extend_catalog_names(cats)
+
+    # Metastore-wide namespaces (every catalog.schema.table the user can see)
+    # in one system.information_schema query.
+    rows = None
+    try:
+        rows = executor.metastore_relations()
+    except Exception as e:
+        LOGGER.warning("metastore-wide namespace refresh failed: %s", e)
+    if rows:
+        completer.set_namespaces(rows)
+        return
+
+    # Fallback: per-catalog schema crawl, capped.
     session = os.environ.get("DBSQLCLI_CATALOG")
     mapping = {}
     if len(cats) <= MAX_CATALOG_SCHEMA_CRAWL:

@@ -220,6 +220,18 @@ class SQLExecute(object):
             logger.debug("schemas for catalog %s failed: %s", catalog, e)
             return []
 
+    def metastore_relations(self):
+        """(catalog, schema, table) for everything visible in the metastore,
+        in one system.information_schema query (permission-filtered by the
+        server)."""
+        query = (
+            "select table_catalog, table_schema, table_name "
+            "from system.information_schema.tables"
+        )
+        with self.conn.cursor() as cur:
+            cur.execute(query)
+            return cur.fetchall()
+
     def catalog_relations(self):
         """(schema, table) pairs for every schema in the session catalog.
 
