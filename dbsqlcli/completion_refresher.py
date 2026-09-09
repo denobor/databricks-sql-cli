@@ -68,29 +68,38 @@ class CompletionRefresher(object):
         if callable(callbacks):
             callbacks = [callbacks]
 
-        while 1:
-            for refresher in self.refreshers.values():
-                # A failed metadata fetch (permissions, broken federated catalog,
-                # transient network) must not kill the refresh thread and splat a
-                # traceback over the prompt; completions just stay partial.
-                try:
-                    refresher(completer, executor)
-                except Exception as e:
-                    LOGGER.warning("completion refresh failed: %s", e)
-                if self._restart_refresh.is_set():
-                    self._restart_refresh.clear()
+        try:
+            while 1:
+                for refresher in self.refreshers.values():
+                    # A failed metadata fetch (permissions, broken federated
+                    # catalog, transient network) must not kill the refresh
+                    # thread and splat a traceback over the prompt; completions
+                    # just stay partial.
+                    try:
+                        refresher(completer, executor)
+                    except Exception as e:
+                        LOGGER.warning("completion refresh failed: %s", e)
+                    if self._restart_refresh.is_set():
+                        self._restart_refresh.clear()
+                        break
+                else:
+                    # Break out of while loop if the for loop finishes natually
+                    # without hitting the break statement.
                     break
-            else:
-                # Break out of while loop if the for loop finishes natually
-                # without hitting the break statement.
-                break
 
-            # Start over the refresh from the beginning if the for loop hit the
-            # break statement.
-            continue
+                # Start over the refresh from the beginning if the for loop hit
+                # the break statement.
+                continue
 
-        for callback in callbacks:
-            callback(completer)
+            for callback in callbacks:
+                callback(completer)
+        finally:
+            # Free the refresher's own connection (and any cloud-fetch worker
+            # threads it spawned) so nothing lingers to slow interpreter exit.
+            try:
+                executor.close_connection()
+            except Exception:
+                pass
 
 
 def refresher(name, refreshers=CompletionRefresher.refreshers):

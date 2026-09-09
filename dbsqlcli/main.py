@@ -426,9 +426,27 @@ For more details about the error, you can check the log file: %s""" % (
         except EOFError:
             special.close_tee()
         finally:
-            # Close before interpreter teardown, or the connector's destructor
-            # logs "Attempt to close session raised a local exception".
+            # Close before interpreter teardown (avoids destructor noise), but
+            # never let a dead keep-alive socket or slow server hold the exit
+            # hostage: best-effort close with a hard deadline.
+            closer = threading.Thread(
+                target=self._close_connection_quietly, daemon=True
+            )
+            closer.start()
+            closer.join(1.5)
+            if closer.is_alive():
+                # Abandon the close and silence the connector's destructor;
+                # the server garbage-collects the session on its own.
+                try:
+                    self.sqlexecute.conn.session.is_open = False
+                except Exception:
+                    pass
+
+    def _close_connection_quietly(self):
+        try:
             self.sqlexecute.close_connection()
+        except Exception:
+            pass
 
     def get_output_margin(self, status=None):
         """Get the output margin (number of rows for the prompt, footer and
