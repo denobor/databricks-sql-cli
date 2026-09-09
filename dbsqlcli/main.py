@@ -119,6 +119,13 @@ For more details about the error, you can check the log file: %s""" % (
             else True
         )
         self.multi_line = _cfg["main"].as_bool("multi_line")
+        # Offer SQL keywords in the completion dropdown (older user configs may
+        # not have the key, so default True).
+        self.suggest_keywords = (
+            _cfg["main"].as_bool("suggest_keywords")
+            if "suggest_keywords" in _cfg["main"]
+            else True
+        )
         self.key_bindings = _cfg["main"]["key_bindings"]
         self.prompt = _cfg["main"]["prompt"] or self.DEFAULT_PROMPT
         self.destructive_warning = _cfg["main"].as_bool("destructive_warning")
@@ -132,7 +139,7 @@ For more details about the error, you can check the log file: %s""" % (
         self.cli_style = _cfg["colors"]
         self.output_style = style_factory_output(self.syntax_style, self.cli_style)
 
-        self.completer = DBSQLCompleter()
+        self.completer = DBSQLCompleter(suggest_keywords=self.suggest_keywords)
         self._completer_lock = threading.Lock()
         self.completion_refresher = CompletionRefresher()
 
@@ -543,6 +550,7 @@ For more details about the error, you can check the log file: %s""" % (
             "smart_completion": True,
             "supported_formats": self.formatter.supported_formats,
             "keyword_casing": self.completer.keyword_casing,
+            "suggest_keywords": self.suggest_keywords,
         }
         self.completion_refresher.refresh(
             self.sqlexecute, self._on_completions_refreshed, completer_options

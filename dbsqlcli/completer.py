@@ -35,10 +35,15 @@ class DBSQLCompleter(Completer):
     functions = get_literals("functions")
 
     def __init__(
-        self, smart_completion=True, supported_formats=(), keyword_casing="auto"
+        self,
+        smart_completion=True,
+        supported_formats=(),
+        keyword_casing="auto",
+        suggest_keywords=True,
     ):
         super(self.__class__, self).__init__()
         self.smart_completion = smart_completion
+        self.suggest_keywords = suggest_keywords
         self.reserved_words = set()
         for x in self.keywords:
             self.reserved_words.update(x.split())
@@ -223,8 +228,11 @@ class DBSQLCompleter(Completer):
         # If smart_completion is off then match any word that starts with
         # 'word_before_cursor'.
         if not smart_completion:
+            collection = self.all_completions
+            if not self.suggest_keywords:
+                collection = collection - set(self.keywords)
             return self.find_matches(
-                word_before_cursor, self.all_completions, start_only=True, fuzzy=False
+                word_before_cursor, collection, start_only=True, fuzzy=False
             )
 
         completions = []
@@ -297,6 +305,11 @@ class DBSQLCompleter(Completer):
         return set()
 
     def get_keyword_matches(self, suggestion, word_before_cursor):
+        # Keyword suggestions get in the way of typing for users who know SQL;
+        # suggest_keywords = False keeps object/function/special suggestions
+        # while dropping the keyword dropdown entirely.
+        if not self.suggest_keywords:
+            return []
         keywords = self.keywords_tree.keys()
         # Get well known following keywords for the last token. If any, narrow
         # candidates to this list.
