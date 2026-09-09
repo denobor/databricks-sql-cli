@@ -42,11 +42,17 @@ class DBSQLCompleter(Completer):
         keyword_casing="auto",
         suggest_keywords=True,
         suggest_functions=True,
+        suggest_unqualified_tables=True,
     ):
         super(self.__class__, self).__init__()
         self.smart_completion = smart_completion
         self.suggest_keywords = suggest_keywords
         self.suggest_functions = suggest_functions
+        # When False, a bare name after FROM suggests only namespaces
+        # (catalogs/schemas), assuming fully qualified table references.
+        self.suggest_unqualified_tables = suggest_unqualified_tables
+        self.catalogs = []
+        self.catalog_schemas = {}
         self.reserved_words = set()
         for x in self.keywords:
             self.reserved_words.update(x.split())
@@ -131,6 +137,16 @@ class DBSQLCompleter(Completer):
                     self.dbname,
                 )
             self.all_completions.add(relname[0])
+
+    def extend_catalog_names(self, catalogs):
+        self.catalogs = list(catalogs)
+        self.all_completions.update(self.catalogs)
+
+    def set_catalog_schemas(self, mapping):
+        """{catalog: [schema, ...]} for catalogs other than the session one."""
+        self.catalog_schemas = dict(mapping)
+        for schemas in self.catalog_schemas.values():
+            self.all_completions.update(schemas)
 
     def extend_qualified_relations(self, data, kind):
         """Extend metadata with (schema, rel_name) rows spanning the whole
@@ -323,19 +339,34 @@ class DBSQLCompleter(Completer):
         return user_funcs
 
     def get_table_matches(self, suggestion, word_before_cursor):
-        schema = self._relation_schema(suggestion.schema, word_before_cursor)
-        if schema == "":
-            # "<catalog>." typed: the next path element is a schema.
-            return self.get_schema_matches(suggestion, word_before_cursor)
-        tables = self.populate_schema_objects(schema, "tables")
+        kind, val = self._relation_ref(suggestion.schema, word_before_cursor)
+        if kind == "catalog":
+            session_catalog = os.environ.get("DBSQLCLI_CATALOG", "")
+            if val == session_catalog:
+                schemas = [s for s in self.dbmetadata["tables"] if s]
+            else:
+                schemas = self.catalog_schemas.get(val, [])
+            return self.find_matches(word_before_cursor, schemas)
+        if kind == "cat_schema":
+            cat, schema = val
+            if cat != os.environ.get("DBSQLCLI_CATALOG", ""):
+                # Table metadata is loaded for the session catalog only.
+                return []
+            tables = self.populate_schema_objects(schema, "tables")
+            return self.find_matches(word_before_cursor, tables)
+        if kind == "current" and not self.suggest_unqualified_tables:
+            return []
+        tables = self.populate_schema_objects(val, "tables")
         return self.find_matches(word_before_cursor, tables)
 
     def get_view_matches(self, suggestion, word_before_cursor):
-        schema = self._relation_schema(suggestion.schema, word_before_cursor)
-        if schema == "":
-            # get_table_matches already contributed the schema suggestions.
+        kind, val = self._relation_ref(suggestion.schema, word_before_cursor)
+        if kind in ("catalog", "cat_schema"):
+            # get_table_matches already covers the namespace suggestions.
             return []
-        views = self.populate_schema_objects(schema, "views")
+        if kind == "current" and not self.suggest_unqualified_tables:
+            return []
+        views = self.populate_schema_objects(val, "views")
         return self.find_matches(word_before_cursor, views)
 
     def get_alias_matches(self, suggestion, word_before_cursor):
@@ -346,29 +377,31 @@ class DBSQLCompleter(Completer):
         return self.find_matches(word_before_cursor, self.databases)
 
     def get_schema_matches(self, _, word_before_cursor):
-        # Schema names = the keys of the catalog-wide table metadata.
+        # Namespace suggestions: session-catalog schemas + catalog names.
         schemas = [s for s in self.dbmetadata["tables"] if s]
-        return self.find_matches(word_before_cursor, schemas)
+        return self.find_matches(word_before_cursor, schemas + self.catalogs)
 
-    def _relation_schema(self, suggestion_schema, word_before_cursor):
-        """Resolve the schema of a dotted reference, treating a leading
-        '<session catalog>.' as transparent (Unity Catalog three-level names).
+    def _relation_ref(self, suggestion_schema, word_before_cursor):
+        """Resolve a (possibly dotted) relation reference into one of:
 
-        Returns the schema name, None (no qualifier -> current schema), or ""
-        as a sentinel meaning "the qualifier is the catalog itself, suggest
-        schemas".
+        ("current", None)          no qualifier
+        ("schema", name)           schema qualifier in the session catalog
+        ("catalog", name)          "<catalog>." -> suggest its schemas
+        ("cat_schema", (cat, sch)) "<catalog>.<schema>." -> suggest tables
+
+        The parser reports only the first dotted part, so the typed word is
+        consulted for three-level names.
         """
         if not suggestion_schema:
-            return None
-        catalog = os.environ.get("DBSQLCLI_CATALOG", "")
-        if not catalog or self.unescape_name(suggestion_schema) != catalog:
-            return suggestion_schema
-        # The parser reports the first dotted part; look at what was actually
-        # typed to find the real schema, e.g. "cat.sch.<tab>" -> "sch".
+            return ("current", None)
+        name = self.unescape_name(suggestion_schema)
+        session_catalog = os.environ.get("DBSQLCLI_CATALOG", "")
+        if name != session_catalog and name not in self.catalogs:
+            return ("schema", suggestion_schema)
         parts = word_before_cursor.split(".")
         if len(parts) >= 3:
-            return parts[-2]
-        return ""
+            return ("cat_schema", (name, parts[-2]))
+        return ("catalog", name)
 
     def get_keyword_matches(self, suggestion, word_before_cursor):
         # Keyword suggestions get in the way of typing for users who know SQL;

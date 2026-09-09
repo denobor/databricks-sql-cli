@@ -204,6 +204,22 @@ class SQLExecute(object):
             if row[0] in tables:
                 yield row[0], row[1]
 
+    def catalogs(self):
+        """Catalog names visible to the session."""
+        with self.conn.cursor() as cur:
+            return [row[0] for row in cur.catalogs().fetchall()]
+
+    def catalog_schemas(self, catalog):
+        """Schema names in one catalog; empty on failure (broken federated
+        catalogs must not poison the crawl)."""
+        try:
+            with self.conn.cursor() as cur:
+                rows = cur.schemas(catalog_name=catalog).fetchall()
+                return [r[0] for r in rows]
+        except Exception as e:
+            logger.debug("schemas for catalog %s failed: %s", catalog, e)
+            return []
+
     def catalog_relations(self):
         """(schema, table) pairs for every schema in the session catalog.
 

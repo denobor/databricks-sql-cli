@@ -1,3 +1,4 @@
+import os
 import threading
 from collections import OrderedDict
 
@@ -150,3 +151,31 @@ def refresh_tables(completer, executor):
 @refresher("special_commands")
 def refresh_special(completer, executor):
     completer.extend_special_commands(COMMANDS.keys())
+
+
+# Guard against metastores with very many catalogs: the per-catalog schema
+# crawl is one SHOW SCHEMAS each, in this background thread.
+MAX_CATALOG_SCHEMA_CRAWL = 30
+
+
+@refresher("catalogs")
+def refresh_catalogs(completer, executor):
+    # Catalog names for the top level of fully qualified references, plus
+    # schema lists for the other catalogs (table metadata stays scoped to the
+    # session catalog).
+    cats = executor.catalogs()
+    completer.extend_catalog_names(cats)
+    session = os.environ.get("DBSQLCLI_CATALOG")
+    mapping = {}
+    if len(cats) <= MAX_CATALOG_SCHEMA_CRAWL:
+        for cat in cats:
+            if cat == session:
+                continue
+            schemas = executor.catalog_schemas(cat)
+            if schemas:
+                mapping[cat] = schemas
+    else:
+        LOGGER.warning(
+            "skipping per-catalog schema crawl: %d catalogs", len(cats)
+        )
+    completer.set_catalog_schemas(mapping)

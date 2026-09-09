@@ -35,6 +35,11 @@ suggest_keywords = True
 # dropdown. Set False to silence them; table/column/schema suggestions remain.
 suggest_functions = True
 
+# Offer tables of the current schema for a bare name after FROM. Set False for
+# namespace-first completion: bare names suggest catalogs/schemas only, and
+# tables appear once a "catalog.schema." qualifier is typed.
+suggest_unqualified_tables = True
+
 # Table format. Possible values: ascii, double, github,
 # psql, plain, simple, grid, fancy_grid, pipe, orgtbl, rst, mediawiki, html,
 # latex, latex_booktabs, textile, moinmoin, jira, vertical, tsv, csv.

@@ -131,6 +131,11 @@ For more details about the error, you can check the log file: %s""" % (
             if "suggest_functions" in _cfg["main"]
             else True
         )
+        self.suggest_unqualified_tables = (
+            _cfg["main"].as_bool("suggest_unqualified_tables")
+            if "suggest_unqualified_tables" in _cfg["main"]
+            else True
+        )
         self.key_bindings = _cfg["main"]["key_bindings"]
         self.prompt = _cfg["main"]["prompt"] or self.DEFAULT_PROMPT
         self.destructive_warning = _cfg["main"].as_bool("destructive_warning")
@@ -147,6 +152,7 @@ For more details about the error, you can check the log file: %s""" % (
         self.completer = DBSQLCompleter(
             suggest_keywords=self.suggest_keywords,
             suggest_functions=self.suggest_functions,
+            suggest_unqualified_tables=self.suggest_unqualified_tables,
         )
         self._completer_lock = threading.Lock()
         self.completion_refresher = CompletionRefresher()
@@ -560,6 +566,7 @@ For more details about the error, you can check the log file: %s""" % (
             "keyword_casing": self.completer.keyword_casing,
             "suggest_keywords": self.suggest_keywords,
             "suggest_functions": self.suggest_functions,
+            "suggest_unqualified_tables": self.suggest_unqualified_tables,
         }
         self.completion_refresher.refresh(
             self.sqlexecute, self._on_completions_refreshed, completer_options
