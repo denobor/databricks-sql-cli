@@ -157,13 +157,70 @@ class SQLExecute(object):
         # e.g. SELECT or SHOW.
         if cursor.description is not None:
             headers = [x[0] for x in cursor.description]
-            rows = cursor.fetchall()
+            rows = self._fetch_rows_safely(cursor)
             status = format_status(rows_length=len(rows), cursor=cursor)
         else:
             logger.debug("No rows in result.")
             rows = None
             status = format_status(rows_length=None, cursor=cursor)
         return (title, rows, headers, status)
+
+    @staticmethod
+    def _fetch_rows_safely(cursor):
+        """Fetch all rows; tolerate cells that are not valid UTF-8.
+
+        cursor.fetchall() converts through arrow and pandas, and both fail
+        when a string column contains bytes that are not valid UTF-8 (for
+        example, a raw event payload with a binary prefix). Fetch the arrow
+        table directly and decode such columns with replacement characters,
+        so one bad producer cannot block the display of a result.
+        """
+        fetch_arrow = getattr(cursor, "fetchall_arrow", None)
+        if fetch_arrow is None:
+            return cursor.fetchall()
+        try:
+            import pyarrow as pa
+
+            table = fetch_arrow()
+        except Exception:
+            return cursor.fetchall()
+
+        if table.num_rows == 0:
+            return []
+
+        columns = []
+        for column in table.columns:
+            try:
+                columns.append(column.to_pylist())
+            except UnicodeDecodeError:
+                col_type = column.type
+                if pa.types.is_string(col_type) or pa.types.is_large_string(
+                    col_type
+                ):
+                    # Lossy decode: replace the invalid bytes.
+                    bin_type = (
+                        pa.large_binary()
+                        if pa.types.is_large_string(col_type)
+                        else pa.binary()
+                    )
+                    data = column.cast(bin_type).to_pylist()
+                    columns.append(
+                        [
+                            None if v is None else v.decode("utf-8", "replace")
+                            for v in data
+                        ]
+                    )
+                else:
+                    # Nested types: salvage cell by cell.
+                    values = []
+                    flat = column.combine_chunks()
+                    for i in range(len(flat)):
+                        try:
+                            values.append(flat[i].as_py())
+                        except Exception:
+                            values.append("<non-utf8 data>")
+                    columns.append(values)
+        return list(zip(*columns))
 
     def tables(self):
         """Yields table names."""

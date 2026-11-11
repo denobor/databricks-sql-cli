@@ -835,13 +835,17 @@ def cli(
         try:
             dbsqlcli.formatter.format_name = table_format
             dbsqlcli.run_query(query)
-            # Close before interpreter teardown, or the connector's destructor
-            # logs "Attempt to close session raised a local exception".
-            dbsqlcli.sqlexecute.close_connection()
-            exit(0)
         except Exception as e:
             click.secho(str(e), err=True, fg="red")
             exit(1)
+        finally:
+            # Close on success and on error, or the connector's destructor
+            # logs "Attempt to close session raised a local exception".
+            try:
+                dbsqlcli.sqlexecute.close_connection()
+            except Exception:
+                pass
+        exit(0)
 
     dbsqlcli.run_cli()
 
