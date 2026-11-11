@@ -165,6 +165,13 @@ class SQLExecute(object):
             status = format_status(rows_length=None, cursor=cursor)
         return (title, rows, headers, status)
 
+    # Control characters (except tab, newline, carriage return) break the
+    # terminal and the pager, which reads each cell as a C string: a NUL makes
+    # the rest of the cell invisible and unsearchable.
+    _CONTROL_CHAR_MAP = {
+        c: 0xFFFD for c in range(0x20) if c not in (0x09, 0x0A, 0x0D)
+    }
+
     @staticmethod
     def _fetch_rows_safely(cursor):
         """Fetch all rows; tolerate cells that are not valid UTF-8.
@@ -206,7 +213,11 @@ class SQLExecute(object):
                     data = column.cast(bin_type).to_pylist()
                     columns.append(
                         [
-                            None if v is None else v.decode("utf-8", "replace")
+                            None
+                            if v is None
+                            else v.decode("utf-8", "replace").translate(
+                                SQLExecute._CONTROL_CHAR_MAP
+                            )
                             for v in data
                         ]
                     )
